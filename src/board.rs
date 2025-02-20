@@ -161,7 +161,7 @@ impl Board {
             .filter_map(|(pos, available)| if available { Some(pos) } else { None })
             .map(|pos| (pos, self.place_at(pos, turn)))
             .map(|(pos, board)| (pos, board.minimax(&maximizer, &turn.opposite())))
-            .map(|(pos, negamaxx)| match negamaxx {
+            .map(|(pos, result)| match result {
                 Minimaxxing::Position(_, v) => (pos, v.clamp(-1, 1)),
                 Minimaxxing::Result(v) => (pos, v * 2),
             });
