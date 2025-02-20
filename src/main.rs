@@ -32,21 +32,18 @@ fn main() {
             board = board.place_at(position, &turn);
         }
 
-        if let Some(winner) = board.winner() {
-            let winner = match winner {
-                Player::X => "X",
-                Player::O => "O",
-            };
-            println!("{winner} won!");
-            board = Board::new();
-            turn = HUMAN;
-            continue;
-        } else if board.game_over() {
-            println!("Tied!");
-            board = Board::new();
-            turn = HUMAN;
-            continue;
+        match board.status() {
+            board::Status::Playing => turn = turn.opposite(),
+            s @ (board::Status::Draw | board::Status::Winner(_)) => {
+                match s {
+                    board::Status::Winner(Player::X) => println!("X won!"),
+                    board::Status::Winner(Player::O) => println!("O won!"),
+                    board::Status::Draw => println!("Draw!"),
+                    board::Status::Playing => unreachable!("matched previously"),
+                };
+                board = Board::new();
+                turn = HUMAN;
+            }
         }
-        turn = turn.opposite();
     }
 }

@@ -23,6 +23,12 @@ pub enum Minimaxxing {
     Position(usize, i8),
 }
 
+pub enum Status {
+    Playing,
+    Winner(Player),
+    Draw,
+}
+
 impl Board {
     pub const ACCESS: [u32; 9] = [
         0b110000_000000_000000,
@@ -85,7 +91,7 @@ impl Board {
         )
     }
 
-    pub const fn game_over(&self) -> bool {
+    const fn game_over(&self) -> bool {
         let mut i = 0;
         loop {
             if (self.0 >> i) & 0b11 == 0b01 {
@@ -98,7 +104,19 @@ impl Board {
         }
     }
 
-    pub const fn winner(&self) -> Option<Player> {
+    pub const fn status(&self) -> Status {
+        if let Some(winner) = self.winner() {
+            Status::Winner(winner)
+        } else {
+            if self.game_over() {
+                Status::Draw
+            } else {
+                Status::Playing
+            }
+        }
+    }
+
+    const fn winner(&self) -> Option<Player> {
         let winning_patterns = [
             0b111111_000000_000000,
             0b000000_111111_000000,
@@ -127,9 +145,13 @@ impl Board {
         }
     }
 
-    pub fn minimax(&self, maximizer: &Player, current_turn: &Player) -> Minimaxxing {
-        if self.game_over() {
-            return Minimaxxing::Result(self.evaluate_board(maximizer));
+    pub fn minimax(&self, maximizer: &Player, turn: &Player) -> Minimaxxing {
+        match self.status() {
+            Status::Winner(winner) => {
+                return Minimaxxing::Result(Self::evaluate_winner_pts(maximizer, &winner));
+            }
+            Status::Draw => return Minimaxxing::Result(0),
+            Status::Playing => {}
         }
 
         let children = self
@@ -137,14 +159,14 @@ impl Board {
             .into_iter()
             .enumerate()
             .filter_map(|(pos, available)| if available { Some(pos) } else { None })
-            .map(|pos| (pos, self.place_at(pos, current_turn)))
-            .map(|(pos, board)| (pos, board.minimax(&maximizer, &current_turn.opposite())))
+            .map(|pos| (pos, self.place_at(pos, turn)))
+            .map(|(pos, board)| (pos, board.minimax(&maximizer, &turn.opposite())))
             .map(|(pos, negamaxx)| match negamaxx {
-                Minimaxxing::Position(_, v) => (pos, v * 2),
-                Minimaxxing::Result(v) => (pos, v),
+                Minimaxxing::Position(_, v) => (pos, v.clamp(-1, 1)),
+                Minimaxxing::Result(v) => (pos, v * 2),
             });
 
-        let chosen = if current_turn == maximizer {
+        let chosen = if turn == maximizer {
             children.max_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
         } else {
             children.min_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
@@ -155,11 +177,11 @@ impl Board {
             .expect("game is not over")
     }
 
-    fn evaluate_board(&self, maximizer: &Player) -> i8 {
-        match (self.winner(), maximizer) {
-            (Some(Player::X), Player::X) | (Some(Player::O), Player::O) => 1,
-            (Some(Player::O), Player::X) | (Some(Player::X), Player::O) => -1,
-            (None, _) => 0,
+    fn evaluate_winner_pts(maximizer: &Player, winner: &Player) -> i8 {
+        if maximizer == winner {
+            1
+        } else {
+            -1
         }
     }
 }
