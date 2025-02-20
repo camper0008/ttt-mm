@@ -3,9 +3,24 @@ use std::fmt::Display;
 #[repr(transparent)]
 pub struct Board(u32);
 
+#[derive(PartialEq)]
 pub enum Player {
     X,
     O,
+}
+
+impl Player {
+    pub const fn opposite(&self) -> Self {
+        match self {
+            Player::X => Player::O,
+            Player::O => Player::X,
+        }
+    }
+}
+
+pub enum Minimaxxing {
+    Result(i8),
+    Position(usize, i8),
 }
 
 impl Board {
@@ -25,9 +40,25 @@ impl Board {
         Board(0b01_01_01_01_01_01_01_01_01)
     }
 
+    pub const fn indexes_available(&self) -> [bool; 9] {
+        let mut result = [false; 9];
+        let mut idx = 0;
+        loop {
+            result[idx] = (self.0 & Self::ACCESS[idx]).count_ones() == 1;
+            idx += 1;
+            if idx == 9 {
+                break result;
+            }
+        }
+    }
+
     pub const fn occupied(&self, idx: usize) -> bool {
         let ones = (self.0 & Self::ACCESS[idx]).count_ones();
         ones != 1
+    }
+
+    pub const fn as_u32(&self) -> u32 {
+        self.0
     }
 
     pub const fn value_at(&self, idx: usize) -> Option<Player> {
@@ -43,7 +74,7 @@ impl Board {
         }
     }
 
-    pub const fn place_at(self, idx: usize, player: &Player) -> Self {
+    pub const fn place_at(&self, idx: usize, player: &Player) -> Self {
         let pattern = Self::ACCESS[idx];
         Self(
             (self.0 & (!pattern))
@@ -52,6 +83,19 @@ impl Board {
                     Player::X => pattern,
                 },
         )
+    }
+
+    pub const fn game_over(&self) -> bool {
+        let mut i = 0;
+        loop {
+            if (self.0 >> i) & 0b11 == 0b01 {
+                break false;
+            }
+            i += 2;
+            if i > 18 {
+                break true;
+            }
+        }
     }
 
     pub const fn winner(&self) -> Option<Player> {
@@ -82,6 +126,42 @@ impl Board {
             }
         }
     }
+
+    pub fn minimax(&self, maximizer: &Player, current_turn: &Player) -> Minimaxxing {
+        if self.game_over() {
+            return Minimaxxing::Result(self.evaluate_board(maximizer));
+        }
+
+        let children = self
+            .indexes_available()
+            .into_iter()
+            .enumerate()
+            .filter_map(|(pos, available)| if available { Some(pos) } else { None })
+            .map(|pos| (pos, self.place_at(pos, current_turn)))
+            .map(|(pos, board)| (pos, board.minimax(&maximizer, &current_turn.opposite())))
+            .map(|(pos, negamaxx)| match negamaxx {
+                Minimaxxing::Position(_, v) => (pos, v * 2),
+                Minimaxxing::Result(v) => (pos, v),
+            });
+
+        let chosen = if current_turn == maximizer {
+            children.max_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
+        } else {
+            children.min_by(|(_, left_score), (_, right_score)| left_score.cmp(&right_score))
+        };
+
+        chosen
+            .map(|(pos, score)| Minimaxxing::Position(pos, score))
+            .expect("game is not over")
+    }
+
+    fn evaluate_board(&self, maximizer: &Player) -> i8 {
+        match (self.winner(), maximizer) {
+            (Some(Player::X), Player::X) | (Some(Player::O), Player::O) => 1,
+            (Some(Player::O), Player::X) | (Some(Player::X), Player::O) => -1,
+            (None, _) => 0,
+        }
+    }
 }
 
 impl Display for Board {
@@ -104,5 +184,16 @@ impl Display for Board {
         );
 
         write!(f, "{rows}")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Board;
+
+    #[test]
+    fn game_over() {
+        let board = Board(0b110100011111110000);
+        assert!(!board.game_over())
     }
 }
